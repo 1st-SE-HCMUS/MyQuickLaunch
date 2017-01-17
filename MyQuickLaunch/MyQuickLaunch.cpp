@@ -1,15 +1,29 @@
 // MyQuickLaunch.cpp : Defines the entry point for the application.
 //
 
+#define _CRT_SECURE_NO_WARNINGS
 #include "stdafx.h"
 #include "MyQuickLaunch.h"
+#include <windowsX.h>
 #include <commctrl.h>
+#include <stdio.h>
+#include <time.h>
+#include <fstream>
+#include <ctime>
+#include <cstdlib>
+#include <shellapi.h>
+#include <locale>
+#include <codecvt>
+#include <vector>
+#pragma comment(lib, "shlwapi.lib")
 #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #pragma comment(lib, "ComCtl32.lib")
+
 //For StrCpy, StrNCat
 #include <shlwapi.h>
 #pragma comment(lib, "shlwapi.lib")
 #include <shellapi.h>
+#include <stdio.h>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -21,6 +35,10 @@
 #ifdef _UNICODE
 #define tcout       wcout
 #define tstring     wstring
+#define WM_MYMESSAGE (WM_USER+ 1)
+UINT EXIT = 100;
+UINT SCAN = 200;
+UINT VIEW_STATITISTIC = 300;
 #else
 #define tcout       cout
 #define tstring     string
@@ -55,6 +73,7 @@ public:
 #define MAX_KEY_LENGTH 255
 #define MAX_VALUE_NAME 16383
 
+
 // Global Variables:
 HINSTANCE g_hInstance;								// current instance
 TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
@@ -65,8 +84,13 @@ vector<Program> gListAppName;
 vector<Program> gToShowList;
 vector<wstring> gFrequentProgramName;
 vector<int> gFrequentProgram;
-
-
+NOTIFYICONDATA icon;
+int remain_Time = 60;
+bool isClicked = false;
+HHOOK hHook = NULL;
+HINSTANCE hinstLib;
+HWND static1, static2, static3, static4, static5, static6, static7;
+RECT rcClient;
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
@@ -75,9 +99,16 @@ INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 HWND createListView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentInst, int x, int y, int nWidth, int nHeight, long lStyle);
 bool EnumInstalledSoftware(void);
 void QueryKey(HKEY hKey);
+INT_PTR CALLBACK Dialog_ViewStatitistic(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+void draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle, float xSweepAngle);
+INT_PTR CALLBACK Dialog_ScanToBuildDatabase(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+void CALLBACK timeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime);
 void loadDataToListView(vector<Program> list);
 wstring fixExecutablePath(wstring path);
 void ScanAppPath(TCHAR* appPath, int level);
+void setNote(HWND staticX, int i, vector<Program>sort, int sum);
+void _doRemoveHook(HWND hWnd);
+void _doInstallHook(HWND hWnd);
 
 void writeProgramFrequency(wstring filePath)
 {
@@ -96,7 +127,6 @@ void writeProgramFrequency(wstring filePath)
 	f.close();
 
 }
-
 void readProgramFrequency(wstring filePath)
 {
 	wfstream f;
@@ -131,7 +161,6 @@ void readProgramFrequency(wstring filePath)
 		}
 	}
 }
-
 bool IsExefile(WCHAR file[])
 {
 	if (wcsstr(file, L".exe") != nullptr)
@@ -142,7 +171,6 @@ bool IsExefile(WCHAR file[])
 
 	return false;
 }
-
 void Scanx86Database() {
 	WIN32_FIND_DATA  fd;
 	TCHAR* programPathx86Content = new TCHAR[wcslen(PROGRAM_FILE_PATH_X86) + 2];
@@ -592,8 +620,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    g_hInstance = hInstance; // Store instance handle in our global variable
 
-   hWnd = CreateWindowEx(WS_EX_PALETTEWINDOW, szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-	   CW_USEDEFAULT, CW_USEDEFAULT, DEFAULT_WIDTH, DEFAULT_HEIGHT, NULL, NULL, hInstance, NULL);
+   hWnd = CreateWindowEx(0, szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+	   CW_USEDEFAULT, CW_USEDEFAULT, 500, 550, NULL, NULL, hInstance, NULL);
 
    if (!hWnd)
    {
@@ -605,6 +633,9 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    return TRUE;
 }
+
+HWND btn;
+HWND g_hWnd;
 
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
@@ -618,18 +649,39 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	g_hWnd = hWnd;
 	int wmId, wmEvent;
 	PAINTSTRUCT ps;
 	HDC hdc;
-
+	GetClientRect(hWnd, &rcClient);
+	int width = rcClient.right - rcClient.left;
+	int height = rcClient.bottom - rcClient.top;
 	switch (message)
 	{
 	case WM_CREATE:
 	{
+					  //set time tim create dialog
+					  SetTimer(hWnd, IDT_TIME_RUN, 1000, (TIMERPROC)timeToshowStatitistic);
+
+					  //start to hook
+					  _doInstallHook(hWnd);
+
+					  //add icon to notification area 
+					  ZeroMemory(&icon, sizeof(NOTIFYICONDATA));
+					  icon.cbSize = sizeof(NOTIFYICONDATA);
+					  icon.uID = IDI_ICON1;
+					  icon.hBalloonIcon = LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ICON1));
+					  icon.hIcon = (HICON)LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ICON1));
+					  icon.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+					  icon.hWnd = hWnd;
+					  icon.uCallbackMessage = WM_MYMESSAGE;
+					  wcscpy_s(icon.szTip, L"Quick Note");
+					  Shell_NotifyIcon(NIM_MODIFY, &icon); //modify name in szTip
+					  Shell_NotifyIcon(NIM_ADD, &icon); //Add to notification area
 					  InitCommonControls();
 
-					  hInput = CreateWindowEx(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 10, 10, DEFAULT_WIDTH - 35, 20, hWnd, (HMENU)123, g_hInstance, NULL);
-					  hListProgram = createListView(WS_EX_CLIENTEDGE, hWnd, IDL_LISTVIEW, g_hInstance, 10, 40, DEFAULT_WIDTH - 35, 180, LVS_REPORT | LVS_ICON | LVS_EDITLABELS | LVS_SHOWSELALWAYS);
+					  hInput = CreateWindowEx(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 10, 10, width - 30, 30, hWnd, (HMENU)123, g_hInstance, NULL);
+					  hListProgram = createListView(WS_EX_CLIENTEDGE, hWnd, IDL_LISTVIEW, g_hInstance, 10, 50, width - 30, height-50, LVS_REPORT | LVS_ICON | LVS_EDITLABELS | LVS_SHOWSELALWAYS);
 
 
 					  //EnumInstalledSoftware();
@@ -646,6 +698,67 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					 
 	}
 		break;
+
+
+	case WM_KEYDOWN:{
+
+						_doInstallHook(hWnd);
+
+						if (isClicked){
+   							//bat su kien hook o day
+							MessageBox(hWnd, L"ok", L"", MB_OK);
+						}
+	}  
+		break;
+	case WM_MYMESSAGE:{
+
+						  switch (lParam)
+						  {
+						  case WM_RBUTTONDOWN:
+						  {
+
+												 MENUITEMINFO separatorBtn = { 0 };
+												 separatorBtn.cbSize = sizeof(MENUITEMINFO);
+												 separatorBtn.fMask = MIIM_FTYPE;
+												 separatorBtn.fType = MFT_SEPARATOR;
+
+												 HMENU hMenu = CreatePopupMenu();
+
+												 if (hMenu) {
+													 InsertMenu(hMenu, -1, MF_BYPOSITION, EXIT, L"Exit");
+													 InsertMenuItem(hMenu, -1, FALSE, &separatorBtn);
+													 InsertMenu(hMenu, -1, MF_BYPOSITION, VIEW_STATITISTIC, L"View statitistics");
+													 InsertMenuItem(hMenu, -1, FALSE, &separatorBtn);
+													 InsertMenu(hMenu, -1, MF_BYPOSITION, SCAN, L"Scan to build database");
+													 InsertMenuItem(hMenu, -1, FALSE, &separatorBtn);
+													 POINT pt;
+													 GetCursorPos(&pt);
+													 SetForegroundWindow(hWnd);
+													 UINT clicked = TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, pt.x, pt.y, 0, hWnd, NULL);
+
+													 if (clicked == VIEW_STATITISTIC){
+														 DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_DIALOG2),
+															 hWnd, Dialog_ViewStatitistic);
+													 }
+													 else if (clicked == SCAN){														 
+														 //scan here
+
+													 }
+													 else if (clicked == EXIT)
+													 {
+														 DestroyWindow(hWnd);
+													 }
+													 PostMessage(hWnd, WM_NULL, 0, 0);
+													 DestroyMenu(hMenu);
+												 }
+
+						  }
+						  default:
+							  break;
+						  }
+	}
+
+
 	case WM_COMMAND:
 		wmId    = LOWORD(wParam);
 		wmEvent = HIWORD(wParam);
@@ -663,8 +776,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		switch (wmId)
 		{
+		case IDM_EXIT:
+			DestroyWindow(hWnd);
+
+		case IDM_STATISTIC:
+			DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_DIALOG2),
+				hWnd, Dialog_ViewStatitistic);
+
+		case ID_SCAN:
+			//scan here
+
 		case IDM_ABOUT:
-			DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 			break;
 			/*
 		case IDM_EXIT:
@@ -709,9 +831,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							  gListAppName.at(gToShowList.at(i).index).frequency++;
 
 							 ShellExecute(NULL, _T("open"), exeString.c_str(), NULL, NULL, SW_SHOWNORMAL);
-						  }
-							  
+						  }						  
+
 						  break;
+					  case NM_RETURN:
+						  if (notifyMess->hwndFrom == hListProgram)
+					  {
+
+										 int i = ListView_GetSelectionMark(hListProgram);
+
+										 wstring exeString = gToShowList.at(i).displayIcon;
+										 if (!exeString.empty())
+										 {
+											 exeString = fixExecutablePath(exeString);
+										 }
+										 else
+										 {
+											 exeString = gToShowList.at(i).installLocation;
+										 }
+
+										 //Increase frequency
+										 gListAppName.at(gToShowList.at(i).index).frequency++;
+
+										 ShellExecute(NULL, _T("open"), exeString.c_str(), NULL, NULL, SW_SHOWNORMAL);
+					  }
+									 break;
 					  }
 	}
 		break;
@@ -722,6 +866,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_DESTROY:
 		writeProgramFrequency(FREQUENCY_FILE_PATH);
+		_doRemoveHook(hWnd);
 		PostQuitMessage(0);
 		break;
 	default:
@@ -778,7 +923,6 @@ HWND createListView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentIn
 	return m_hListView;
 }
 
-
 bool EnumInstalledSoftware(void)
 {
 	HKEY hUninstKey = NULL;
@@ -834,9 +978,6 @@ bool EnumInstalledSoftware(void)
 
 	return true;
 }
-
-
-
 
 void QueryKey(HKEY hKey)
 {
@@ -952,3 +1093,342 @@ wstring fixExecutablePath(wstring path)
 	int index = path.find(L"exe");
 	return path.substr(0, index + 3);
 }
+
+void setNote(HWND staticX, int i, vector<Program>sort, int sum){
+	ShowWindow(staticX, SW_SHOWNOACTIVATE);
+	wstring temp = to_wstring(100 * (sort[i].frequency) / sum) + L"\%" + L": " + sort[i].displayName;
+	SetWindowText(staticX, temp.c_str());
+}
+
+
+INT_PTR CALLBACK Dialog_ViewStatitistic(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	HDC hdc;
+	PAINTSTRUCT ps;
+	GetClientRect(hDlg, &rcClient);
+	int width = rcClient.right - rcClient.left;
+	int height = rcClient.bottom - rcClient.top;
+	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, TRUE, FALSE, FALSE, ANSI_CHARSET,
+		OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+		DEFAULT_PITCH | FF_DONTCARE, TEXT("Times New Roman"));	GetClientRect(hDlg, &rcClient);
+	UNREFERENCED_PARAMETER(lParam);
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		static1 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static1, WM_SETFONT, (WPARAM)hFont, TRUE);
+		static2 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9/15, height / 5, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static2, WM_SETFONT, (WPARAM)hFont, TRUE);
+		static3 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 3 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static3, WM_SETFONT, (WPARAM)hFont, TRUE);
+		static4 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 4 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static4, WM_SETFONT, (WPARAM)hFont, TRUE);
+		static5 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height / 2, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static5, WM_SETFONT, (WPARAM)hFont, TRUE);
+		static6 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 6 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static6, WM_SETFONT, (WPARAM)hFont, TRUE);
+		static7 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 7 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		SendMessage(static7, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+		//ShowWindow(static1, SW_HIDE);
+		ShowWindow(static2, SW_HIDE);
+		ShowWindow(static3, SW_HIDE);
+		ShowWindow(static4, SW_HIDE);
+		ShowWindow(static5, SW_HIDE);
+		ShowWindow(static6, SW_HIDE);
+		ShowWindow(static7, SW_HIDE);
+		break;
+		//return (INT_PTR)TRUE;
+
+	case WM_CTLCOLORSTATIC:
+	{
+							  DWORD CtrlID = GetDlgCtrlID((HWND)lParam); //Window Control ID
+							  HDC hdcStatic = (HDC)wParam;
+							  SetTextColor(hdcStatic, RGB(0, 0, 0));
+							  SetBkMode(hdcStatic, TRANSPARENT);
+
+	}break;
+	case WM_COMMAND:
+	{
+					   int id = LOWORD(wParam);
+					   switch (id)
+					   {
+					   case IDOK:
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
+					   case IDCANCEL:
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
+					   default:
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
+						   break;
+					   }
+	}break;
+
+
+	case WM_PAINT:
+	{
+					 if (gListAppName.size() > 0){
+						 hdc = BeginPaint(hDlg, &ps);
+						 int nX = width/4;
+						 int nY = height/3;
+						 DWORD dwRadius = 100;
+						 float xStartAngle = 90;
+						 float xSweepAngle = 0;
+						 int sum = 0;
+						 hdc = GetDC(hDlg);
+						 BeginPath(hdc);
+
+						 //tinh tong so note co trong list
+						 for (int i = 0; i < gListAppName.size(); i++){
+							 sum += gListAppName[i].frequency;
+						 }
+
+						 vector<Program> sortedList;
+
+						 //dua danh sach cac index cua List vao
+						 for (int i = 0; i < gListAppName.size(); i++){
+							 sortedList.push_back(gListAppName[i]);
+						 }
+
+						 if (gListAppName.size()){
+							 //sap xep theo index
+							 for (int i = 0; i < sortedList.size() - 1; i++){
+								 for (int j = i + 1; j < sortedList.size(); j++){
+									 if (sortedList[i].frequency < sortedList[j].frequency){
+										 Program temp = sortedList[i];
+										 sortedList[i] = sortedList[j];
+										 sortedList[j] = temp;
+									 }
+								 }
+							 }
+						 }
+
+						 //bat dau ve					
+						 SelectObject(hdc, GetStockObject(DC_BRUSH));
+
+						 for (int i = 0; i < sortedList.size(); i++){
+							 if (i < 6 && sortedList[i].frequency>0){
+								 //tinh goc quay
+								 xSweepAngle = 360 * sortedList[i].frequency / sum;
+								 BeginPath(hdc);
+								 if (i == 0)
+								 {
+									 if (i == sortedList.size() - 1){
+										 xSweepAngle = 270 + xStartAngle;
+									 }
+									 SetDCBrushColor(hdc, RGB(51, 51, 255));
+									 setNote(static1, i, sortedList, sum);
+								 }
+								 if (i == 1)
+								 {
+									 if (i == sortedList.size() - 1){
+										 xSweepAngle = 270 + xStartAngle;
+									 }
+									 SetDCBrushColor(hdc, RGB(255, 0, 127));
+									 setNote(static2, i, sortedList, sum);
+								 }
+								 if (i == 2)
+								 {
+									 if (i == sortedList.size() - 1){
+										 xSweepAngle = 270 + xStartAngle;
+									 }
+									 SetDCBrushColor(hdc, RGB(0, 255, 255));
+									 setNote(static3, i, sortedList, sum);
+								 }
+								 if (i == 3)
+								 {
+									 if (i == sortedList.size() - 1){
+										 xSweepAngle = 270 + xStartAngle;
+									 }
+									 SetDCBrushColor(hdc, RGB(255, 255, 0));
+									 setNote(static4, i, sortedList, sum);
+								 }
+								 if (i == 4)
+								 {
+									 if (i == sortedList.size() - 1){
+										 xSweepAngle = 270 + xStartAngle;
+									 }
+									 SetDCBrushColor(hdc, RGB(153, 0, 153));
+									 setNote(static5, i, sortedList, sum);
+								 }
+								 if (i == 5)
+								 {
+									 if (i == sortedList.size() - 1){
+										 xSweepAngle = 270 + xStartAngle;
+									 }
+									 SetDCBrushColor(hdc, RGB(0, 153, 0));
+									 setNote(static6, i, sortedList, sum);
+								 }
+							 }
+							 else
+							 {
+								 if (sortedList[i].frequency < 1 && i < 6){
+									 break;
+								 }
+								 //goc quay cuoi cung = 360 - tong so goc quay truoc do
+								 xSweepAngle = 270 + xStartAngle;
+
+								 BeginPath(hdc);
+								 SetDCBrushColor(hdc, RGB(255, 128, 0));
+								 draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
+
+								 //hien chu tich
+								 Rectangle(hdc, width  / 2, height * (i + 1) / 10, width * 4/ 7, height * (i + 1) / 10 + height / 20);
+								 ShowWindow(static7, SW_SHOWNOACTIVATE);
+								 wstring temp = to_wstring((int)(100 * xSweepAngle / 360)) + L"\%" + L"Khác: ";
+								 SetWindowText(static7, temp.c_str());
+								 break;
+								 
+							 }
+
+							 draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
+							 Rectangle(hdc, width /2, height * (i + 1) / 10, width *4 / 7, height * (i + 1) / 10 + height / 20);
+
+							 //dich chuyen duong noi tam voi bien theo chieu goc quay
+							 xStartAngle -= xSweepAngle;
+						 }
+
+					 }
+
+	}break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+void draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle, float xSweepAngle){
+	MoveToEx(hdc, nX, nY, (LPPOINT)NULL);
+	AngleArc(hdc, nX, nY, dwRadius, xStartAngle, xSweepAngle);
+	LineTo(hdc, nX, nY);
+	EndPath(hdc);
+	FillPath(hdc);
+	//ReleaseDC(hDlg, hdc);
+}
+ 
+INT_PTR CALLBACK Dialog_ScanToBuildDatabase(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam){
+	GetClientRect(hDlg, &rcClient);
+	int width = rcClient.right - rcClient.left;
+	int height = rcClient.bottom - rcClient.top;
+	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, TRUE, FALSE, FALSE, ANSI_CHARSET,
+		OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+		DEFAULT_PITCH | FF_DONTCARE, TEXT("Times New Roman"));	GetClientRect(hDlg, &rcClient);
+	UNREFERENCED_PARAMETER(lParam);
+	switch (message)
+	{
+	case WM_INITDIALOG:
+	{
+						  InitCommonControls();
+
+						  hInput = CreateWindowEx(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 10, 10, DEFAULT_WIDTH - 35, 20, hDlg, (HMENU)123, g_hInstance, NULL);
+						  hListProgram = createListView(WS_EX_CLIENTEDGE, hDlg, IDL_LISTVIEW, g_hInstance, 10, 40, DEFAULT_WIDTH - 35, 180, LVS_REPORT | LVS_ICON | LVS_EDITLABELS | LVS_SHOWSELALWAYS);
+
+
+						  //EnumInstalledSoftware();
+						  RegistryEnum();
+
+						  Scanx86Database();
+
+						  sortList(ASCENDING);
+
+						  readProgramFrequency(FREQUENCY_FILE_PATH);
+
+						  loadDataToListView(gToShowList);
+	}
+		break;
+	case WM_CTLCOLORSTATIC:
+	{
+							  DWORD CtrlID = GetDlgCtrlID((HWND)lParam); //Window Control ID
+							  HDC hdcStatic = (HDC)wParam;
+							  SetTextColor(hdcStatic, RGB(0, 0, 0));
+							  SetBkMode(hdcStatic, TRANSPARENT);
+
+	}break;
+	case WM_COMMAND:
+	{
+					   int id = LOWORD(wParam);
+					   switch (id)
+					   {
+					   case IDOK:
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
+					   case IDCANCEL:
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
+					   default:
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
+						   break;
+					   }
+	}break;
+
+	}
+}
+
+void CALLBACK timeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime)
+{
+	remain_Time--;
+	if (remain_Time == -1)
+	{
+		DialogBox(NULL, MAKEINTRESOURCE(IDD_DIALOG2),
+			hwnd, Dialog_ViewStatitistic);
+		remain_Time = 60;
+	}
+
+	return;
+}
+
+bool KeyPressed(int a)
+{
+	if (GetAsyncKeyState(a))
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+LRESULT CALLBACK MyHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+
+	if (nCode < 0)
+	{
+		return CallNextHookEx(hHook, nCode, wParam, lParam);
+	}
+
+	if ((GetAsyncKeyState(VK_LWIN)<0) && (GetAsyncKeyState('K') <0))
+	{
+		if (!isClicked)
+		{
+			ShowWindow(g_hWnd, SW_SHOW);
+			isClicked = true;
+		}
+		else
+		{
+			isClicked = false;
+			ShowWindow(g_hWnd, SW_HIDE);
+
+		}
+	}
+
+	return CallNextHookEx(hHook, nCode, wParam, lParam);
+
+}
+
+void _doInstallHook(HWND hWnd)
+{
+	if (hHook != NULL) return;
+	hHook = SetWindowsHookEx(WH_KEYBOARD_LL, (HOOKPROC)MyHookProc, hinstLib, 0);
+
+}
+
+void _doRemoveHook(HWND hWnd)
+{
+	if (hHook == NULL) return;
+	UnhookWindowsHookEx(hHook);
+	hHook = NULL;
+	MessageBox(hWnd, L"Remove hook successfully", L"Result", MB_OK);
+}
+
