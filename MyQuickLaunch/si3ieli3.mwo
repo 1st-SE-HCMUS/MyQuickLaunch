@@ -89,8 +89,6 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 HWND hInput;
 HWND hListProgram;
 HWND hCheckbox;
-HWND btn;
-HWND g_hWnd;
 vector<Program> gListAppName;
 vector<Program> gToShowList;
 vector<wstring> gFrequentProgramName;
@@ -113,28 +111,26 @@ INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 
 HWND CreateListView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentInst, int x, int y, int nWidth, int nHeight, long lStyle);
 INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-void Draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle, float xSweepAngle);
-INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-void CALLBACK TimeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime);
-void LoadDataToListView(vector<Program> list);
+void draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle, float xSweepAngle);
+INT_PTR CALLBACK Dialog_ScanToBuildDatabase(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+void CALLBACK timeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime);
+void loadDataToListView(vector<Program> list);
 wstring fixExecutablePath(wstring path);
-void deepPathSearch(TCHAR* appPath, int level);
+void DeepPathSearch(TCHAR* appPath, int level);
 void setNote(HWND staticX, int i, vector<Program>sort, int sum);
 void _doRemoveHook(HWND hWnd);
 void _doInstallHook(HWND hWnd); 
-void ClearData();
-void WriteProgramFrequency(wstring filePath);
-void ReadProgramFrequency(wstring filePath);
-void InsertFrequencyToDb();
-bool isExecutableFile(WCHAR file[]);
+void clearData();
+void writeProgramFrequency(wstring filePath);
+void readProgramFrequency(wstring filePath);
+void insertFrequencyToDb();
+bool IsExefile(WCHAR file[]);
 void ScanProgramFileX86();
 void ScanProgramFile();
-void SortList(int mode);
-void SearchList(wstring keyword);
-tstring QueryValueData(HKEY hKey, LPCTSTR szValueName);
-void RegistryEnumeration();
-void AddNotificationIcon(HWND hWnd);
-void ScanDatabase();
+void sortList(int mode);
+void searchList(wstring keyword);
+tstring RegistryQueryValue(HKEY hKey, LPCTSTR szName);
+void RegistryEnum();
 
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
@@ -157,7 +153,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	// Perform application initialization:
 	if (!InitInstance (hInstance, nCmdShow))
 	{
-		return false;
+		return FALSE;
 	}
 
 	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MYQUICKLAUNCH));
@@ -224,16 +220,17 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    if (!hWnd)
    {
-      return false;
+      return FALSE;
    }
 
    ShowWindow(hWnd, nCmdShow);
    UpdateWindow(hWnd);
 
-   return true;
+   return TRUE;
 }
 
-
+HWND btn;
+HWND g_hWnd;
 
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
@@ -259,40 +256,50 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 	{
 					  HFONT hFont;
-					  hFont = CreateFont(16, 0, 0, 0, FW_SEMIBOLD, false, false, false, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+					  hFont = CreateFont(16, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
 
 					  //set time tim create dialog
-					  SetTimer(hWnd, IDT_TIME_RUN, 1000, (TIMERPROC)TimeToshowStatitistic);
+					  SetTimer(hWnd, IDT_TIME_RUN, 1000, (TIMERPROC)timeToshowStatitistic);
 
 					  //start to hook
 					  _doInstallHook(hWnd);
 
 					  //add icon to notification area 
-					  AddNotificationIcon(hWnd);
+					  ZeroMemory(&icon, sizeof(NOTIFYICONDATA));
+					  icon.cbSize = sizeof(NOTIFYICONDATA);
+					  icon.uID = IDI_ICON1;
+					  icon.hBalloonIcon = LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ICON1));
+					  icon.hIcon = (HICON)LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ICON1));
+					  icon.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+					  icon.hWnd = hWnd;
+					  icon.uCallbackMessage = WM_MYMESSAGE;
+					  wcscpy_s(icon.szTip, L"Quick Note");
+					  Shell_NotifyIcon(NIM_MODIFY, &icon); //modify name in szTip
+					  Shell_NotifyIcon(NIM_ADD, &icon); //Add to notification area
 					  InitCommonControls();
 
 					  hInput = CreateWindowEx(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER, 10, 40, width - 30, 30, hWnd, (HMENU)NULL, g_hInstance, NULL);
 					  hListProgram = CreateListView(WS_EX_CLIENTEDGE, hWnd, IDL_LISTVIEW, g_hInstance, 10, 80, width - 30, height - 100, LVS_REPORT | LVS_ICON | LVS_EDITLABELS | LVS_SHOWSELALWAYS);
 
 					  HWND hLabel = CreateWindowEx(0, L"STATIC", L"Search Everywhere: ", WS_CHILD | WS_VISIBLE, 10, 10, width - 100, 30, hWnd, (HMENU)NULL, g_hInstance, NULL);
-					  SendMessage(hLabel, WM_SETFONT, WPARAM(hFont), true);
+					  SendMessage(hLabel, WM_SETFONT, WPARAM(hFont), TRUE);
 
 					  hCheckbox = CreateWindowEx(0, L"BUTTON", L"Include installed program in Registry (HKLM)", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE, 150, 10, 350, 20, hWnd, (HMENU)NULL, g_hInstance, NULL);
-					  SendMessage(hCheckbox, WM_SETFONT, WPARAM(hFont), true);
+					  SendMessage(hCheckbox, WM_SETFONT, WPARAM(hFont), TRUE);
 					  SendMessage(hCheckbox, BM_SETCHECK, BST_CHECKED, NULL);
 
 
-					  RegistryEnumeration();
+					  RegistryEnum();
 
 					  ScanProgramFileX86();
 
-					  SortList(ASCENDING);
+					  sortList(ASCENDING);
 
-					  ReadProgramFrequency(FREQUENCY_FILE_PATH);
-					  InsertFrequencyToDb();
+					  readProgramFrequency(FREQUENCY_FILE_PATH);
+					  insertFrequencyToDb();
 
 					  gToShowList = gListAppName;
-					  LoadDataToListView(gListAppName);
+					  loadDataToListView(gListAppName);
 
 					 
 	}
@@ -305,13 +312,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 						if (isClicked){
    							//bat su kien hook o day
-							ShowWindow(hWnd, SW_SHOWNORMAL);
-							MessageBox(hWnd, L"OK", NULL, 0);
+							MessageBox(hWnd, L"ok", L"", MB_OK);
 						}
 	}  
 		break;
-	case WM_MYMESSAGE:
-	{
+	case WM_MYMESSAGE:{
 
 						  switch (lParam)
 						  {
@@ -327,11 +332,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 												 if (hMenu) {
 													 InsertMenu(hMenu, -1, MF_BYPOSITION, EXIT, L"Exit");
-													 InsertMenuItem(hMenu, -1, false, &separatorBtn);
+													 InsertMenuItem(hMenu, -1, FALSE, &separatorBtn);
 													 InsertMenu(hMenu, -1, MF_BYPOSITION, VIEW_STATITISTIC, L"View statitistics");
-													 InsertMenuItem(hMenu, -1, false, &separatorBtn);
+													 InsertMenuItem(hMenu, -1, FALSE, &separatorBtn);
 													 InsertMenu(hMenu, -1, MF_BYPOSITION, SCAN, L"Scan to build database");
-													 InsertMenuItem(hMenu, -1, false, &separatorBtn);
+													 InsertMenuItem(hMenu, -1, FALSE, &separatorBtn);
 													 POINT pt;
 													 GetCursorPos(&pt);
 													 SetForegroundWindow(hWnd);
@@ -341,12 +346,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 														 DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_DIALOG2),
 															 hWnd, ViewStatitisticDialog);
 													 }
-													 else if (clicked == SCAN)
-													{														 
+													 else if (clicked == SCAN){														 
 														 //scan here
-														 ScanDatabase();
-														 LoadDataToListView(gListAppName);
-														 gToShowList = gListAppName;
+
 													 }
 													 else if (clicked == EXIT)
 													 {
@@ -372,8 +374,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (wmEvent == EN_CHANGE ) {
 				//triggered on keypress
 				GetWindowText(hInput, keyword, 255);
-				SearchList(keyword);
-				LoadDataToListView(gToShowList);
+				searchList(keyword);
+				loadDataToListView(gToShowList);
 			}
 		}
 
@@ -384,12 +386,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case BN_CLICKED:
 			if ((HWND)lParam == hCheckbox)
 			{
-				ClearData();
-				ScanDatabase();
+				clearData();
+				int state = SendMessage(hCheckbox, BM_GETCHECK, 0, 0);
+				if (state == BST_CHECKED)
+				{
+					//Include
+					RegistryEnum();
+				}
+				ScanProgramFile();
+				ScanProgramFileX86();
+				insertFrequencyToDb();
 
-				SearchList(keyword);
+				searchList(keyword);
 
-				LoadDataToListView(gToShowList);
+				loadDataToListView(gToShowList);
 				
 			}
 			break;
@@ -399,14 +409,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case IDM_STATISTIC:
 			DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_DIALOG2),
 				hWnd, ViewStatitisticDialog);
-			break;
 
 		case ID_SCAN:
 			//scan here
-			ScanDatabase();
-			LoadDataToListView(gListAppName);
-			gToShowList = gListAppName;
-			break;
 
 		case IDM_ABOUT:
 			break;
@@ -487,7 +492,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_DESTROY:
-		WriteProgramFrequency(FREQUENCY_FILE_PATH);
+		writeProgramFrequency(FREQUENCY_FILE_PATH);
 		_doRemoveHook(hWnd);
 		PostQuitMessage(0);
 		break;
@@ -504,17 +509,17 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	switch (message)
 	{
 	case WM_INITDIALOG:
-		return (INT_PTR)true;
+		return (INT_PTR)TRUE;
 
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
 		{
 			EndDialog(hDlg, LOWORD(wParam));
-			return (INT_PTR)true;
+			return (INT_PTR)TRUE;
 		}
 		break;
 	}
-	return (INT_PTR)false;
+	return (INT_PTR)FALSE;
 }
 
 
@@ -547,7 +552,7 @@ HWND CreateListView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentIn
 
 
 
-void LoadDataToListView(vector<Program> list)
+void loadDataToListView(vector<Program> list)
 {
 	ListView_DeleteAllItems(hListProgram);
 	for (int i = 0; i < list.size(); i++)
@@ -578,7 +583,7 @@ void LoadDataToListView(vector<Program> list)
 	}
 }
 
-void ClearData()
+void clearData()
 {
 	gToShowList.clear();
 	gListAppName.clear();
@@ -604,27 +609,27 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 	GetClientRect(hDlg, &rcClient);
 	int width = rcClient.right - rcClient.left;
 	int height = rcClient.bottom - rcClient.top;
-	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, true, false, false, ANSI_CHARSET,
+	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, TRUE, FALSE, FALSE, ANSI_CHARSET,
 		OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-		DEFAULT_PITCH | FF_DONTCARE, TEXT("Segoe UI"));	GetClientRect(hDlg, &rcClient);
+		DEFAULT_PITCH | FF_DONTCARE, TEXT("Times New Roman"));	GetClientRect(hDlg, &rcClient);
 	UNREFERENCED_PARAMETER(lParam);
 	switch (message)
 	{
 	case WM_INITDIALOG:
 		static1 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height / 10, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static1, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static1, WM_SETFONT, (WPARAM)hFont, TRUE);
 		static2 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9/15, height / 5, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static2, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static2, WM_SETFONT, (WPARAM)hFont, TRUE);
 		static3 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 3 / 10, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static3, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static3, WM_SETFONT, (WPARAM)hFont, TRUE);
 		static4 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 4 / 10, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static4, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static4, WM_SETFONT, (WPARAM)hFont, TRUE);
 		static5 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height / 2, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static5, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static5, WM_SETFONT, (WPARAM)hFont, TRUE);
 		static6 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 6 / 10, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static6, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static6, WM_SETFONT, (WPARAM)hFont, TRUE);
 		static7 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 7 / 10, 400, 20, hDlg, NULL, NULL, NULL);
-		SendMessage(static7, WM_SETFONT, (WPARAM)hFont, true);
+		SendMessage(static7, WM_SETFONT, (WPARAM)hFont, TRUE);
 
 		//ShowWindow(static1, SW_HIDE);
 		ShowWindow(static2, SW_HIDE);
@@ -634,7 +639,7 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 		ShowWindow(static6, SW_HIDE);
 		ShowWindow(static7, SW_HIDE);
 		break;
-		//return (INT_PTR)true;
+		//return (INT_PTR)TRUE;
 
 	case WM_CTLCOLORSTATIC:
 	{
@@ -650,14 +655,14 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 					   switch (id)
 					   {
 					   case IDOK:
-						   EndDialog(hDlg, false);
-						   return (INT_PTR)true;
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
 					   case IDCANCEL:
-						   EndDialog(hDlg, false);
-						   return (INT_PTR)true;
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
 					   default:
-						   EndDialog(hDlg, false);
-						   return (INT_PTR)true;
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
 						   break;
 					   }
 	}break;
@@ -768,7 +773,7 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 
 								 BeginPath(hdc);
 								 SetDCBrushColor(hdc, RGB(255, 128, 0));
-								 Draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
+								 draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
 
 								 //hien chu tich
 								 Rectangle(hdc, width  / 2, height * (i + 1) / 10, width * 4/ 7, height * (i + 1) / 10 + height / 20);
@@ -779,7 +784,7 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 								 
 							 }
 
-							 Draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
+							 draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
 							 Rectangle(hdc, width /2, height * (i + 1) / 10, width *4 / 7, height * (i + 1) / 10 + height / 20);
 
 							 //dich chuyen duong noi tam voi bien theo chieu goc quay
@@ -790,10 +795,10 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 
 	}break;
 	}
-	return (INT_PTR)false;
+	return (INT_PTR)FALSE;
 }
 
-void Draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle, float xSweepAngle){
+void draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle, float xSweepAngle){
 	MoveToEx(hdc, nX, nY, (LPPOINT)NULL);
 	AngleArc(hdc, nX, nY, dwRadius, xStartAngle, xSweepAngle);
 	LineTo(hdc, nX, nY);
@@ -802,11 +807,11 @@ void Draw(HWND hDlg, HDC hdc, int nX, int nY, DWORD dwRadius, float xStartAngle,
 	//ReleaseDC(hDlg, hdc);
 }
  
-INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam){
+INT_PTR CALLBACK Dialog_ScanToBuildDatabase(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam){
 	GetClientRect(hDlg, &rcClient);
 	int width = rcClient.right - rcClient.left;
 	int height = rcClient.bottom - rcClient.top;
-	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, true, false, false, ANSI_CHARSET,
+	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, TRUE, FALSE, FALSE, ANSI_CHARSET,
 		OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
 		DEFAULT_PITCH | FF_DONTCARE, TEXT("Times New Roman"));	GetClientRect(hDlg, &rcClient);
 	UNREFERENCED_PARAMETER(lParam);
@@ -821,15 +826,15 @@ INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wPara
 
 
 						  //EnumInstalledSoftware();
-						  RegistryEnumeration();
+						  RegistryEnum();
 
 						  ScanProgramFileX86();
 
-						  SortList(ASCENDING);
+						  sortList(ASCENDING);
 
-						  ReadProgramFrequency(FREQUENCY_FILE_PATH);
+						  readProgramFrequency(FREQUENCY_FILE_PATH);
 
-						  LoadDataToListView(gToShowList);
+						  loadDataToListView(gToShowList);
 	}
 		break;
 	case WM_CTLCOLORSTATIC:
@@ -846,14 +851,14 @@ INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wPara
 					   switch (id)
 					   {
 					   case IDOK:
-						   EndDialog(hDlg, false);
-						   return (INT_PTR)true;
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
 					   case IDCANCEL:
-						   EndDialog(hDlg, false);
-						   return (INT_PTR)true;
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
 					   default:
-						   EndDialog(hDlg, false);
-						   return (INT_PTR)true;
+						   EndDialog(hDlg, FALSE);
+						   return (INT_PTR)TRUE;
 						   break;
 					   }
 	}break;
@@ -861,7 +866,7 @@ INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wPara
 	}
 }
 
-void CALLBACK TimeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime)
+void CALLBACK timeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime)
 {
 	remain_Time--;
 	if (remain_Time == -1)
@@ -928,7 +933,7 @@ void _doRemoveHook(HWND hWnd)
 	//MessageBox(hWnd, L"Remove hook successfully", L"Result", MB_OK);
 }
 
-void WriteProgramFrequency(wstring filePath)
+void writeProgramFrequency(wstring filePath)
 {
 	wofstream f(filePath);
 
@@ -946,7 +951,7 @@ void WriteProgramFrequency(wstring filePath)
 
 }
 
-void ReadProgramFrequency(wstring filePath)
+void readProgramFrequency(wstring filePath)
 {
 	wfstream f;
 	f.open(filePath, ios::in);
@@ -968,7 +973,7 @@ void ReadProgramFrequency(wstring filePath)
 	f.close();
 }
 
-void InsertFrequencyToDb()
+void insertFrequencyToDb()
 {
 	for (int i = 0; i < gListAppName.size(); i++)
 	{
@@ -984,7 +989,7 @@ void InsertFrequencyToDb()
 	}
 }
 
-bool isExecutableFile(WCHAR file[])
+bool IsExefile(WCHAR file[])
 {
 	if (wcsstr(file, L".exe") != nullptr)
 	{
@@ -995,83 +1000,80 @@ bool isExecutableFile(WCHAR file[])
 	return false;
 }
 
-void ScanProgramFileX86() 
-{
-	//Init find_data struct
-	WIN32_FIND_DATA  wfd; // Contains information about the file that is found by Find first file and Find next file
-	TCHAR* progX86Path = new TCHAR[wcslen(PROGRAM_FILE_PATH_X86) + 2];
-	StrCpy(progX86Path, PROGRAM_FILE_PATH_X86);
-	StrCat(progX86Path, _T("\\*"));
-
-	HANDLE hFile = FindFirstFileW(progX86Path, &wfd);
-	BOOL found = true;
-
-	//If the function fails or fails to locate files from the search string
+void ScanProgramFileX86() {
+	WIN32_FIND_DATA  fd;
+	TCHAR* programPathx86Content = new TCHAR[wcslen(PROGRAM_FILE_PATH_X86) + 2];
+	StrCpy(programPathx86Content, PROGRAM_FILE_PATH_X86);
+	StrCat(programPathx86Content, _T("\\*"));
+	HANDLE hFile = FindFirstFileW(programPathx86Content, &fd);
+	BOOL isFound = TRUE;
 	if (hFile == INVALID_HANDLE_VALUE) {
-		found = false;
+		isFound = FALSE;
+		OutputDebugString(L"Can't found x86: ");
+		OutputDebugString(PROGRAM_FILE_PATH_X86);
+		OutputDebugString(L"\n");
 	}
-	while (found) {
+	while (isFound) {
 		TCHAR* appPath;
-		if ((wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) //Get only directory and folder
-			&& (StrCmp(wfd.cFileName, _T(".")) != 0) && (StrCmp(wfd.cFileName, _T("..")) != 0)
+		if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			&& (StrCmp(fd.cFileName, _T(".")) != 0) && (StrCmp(fd.cFileName, _T("..")) != 0)
 			) {
-			appPath = new TCHAR[wcslen(PROGRAM_FILE_PATH_X86) + wcslen(wfd.cFileName) + 2];
+			appPath = new TCHAR[wcslen(PROGRAM_FILE_PATH_X86) + wcslen(fd.cFileName) + 2];
 			StrCpy(appPath, PROGRAM_FILE_PATH_X86);
 			StrCat(appPath, L"\\");
-			StrCat(appPath, wfd.cFileName);
-			deepPathSearch(appPath, 0);
+			StrCat(appPath, fd.cFileName);
+			OutputDebugString(L"Scan app path x86: ");
+			OutputDebugString(appPath);
+			OutputDebugString(L"\n");
+			DeepPathSearch(appPath, 0);
 		}
-		found = FindNextFileW(hFile, &wfd);
+		isFound = FindNextFileW(hFile, &fd);
 	}
 }
 
-void ScanProgramFile() 
-{
-	//Init find_data struct
-	WIN32_FIND_DATA  wfd; //Contains information about the file that is found by Find first file and Find next file
-	TCHAR* progFilePath = new TCHAR[wcslen(PROGRAM_FILE_PATH) + 2];
-	StrCpy(progFilePath, PROGRAM_FILE_PATH);
-	StrCat(progFilePath, _T("\\*"));
+void ScanProgramFile() {
+	WIN32_FIND_DATA  fd;
+	TCHAR* programPathContent = new TCHAR[wcslen(PROGRAM_FILE_PATH) + 2];
+	StrCpy(programPathContent, PROGRAM_FILE_PATH);
+	StrCat(programPathContent, _T("\\*"));
 
-	HANDLE hFile = FindFirstFileW(progFilePath, &wfd);
-	BOOL found = true;
-
-	//If the function fails or fails to locate files from the search string
+	HANDLE hFile = FindFirstFileW(programPathContent, &fd);
+	BOOL isFound = TRUE;
 	if (hFile == INVALID_HANDLE_VALUE) {
-		found = false;
+		isFound = FALSE;
+		OutputDebugString(L"Can't found x64 : ");
+		OutputDebugString(PROGRAM_FILE_PATH);
+		OutputDebugString(L"\n");
 	}
-
-	while (found) {
+	while (isFound) {
 		TCHAR* appPath;
-		if ((wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) //Get only directory and folder
-			&& (StrCmp(wfd.cFileName, _T(".")) != 0) && (StrCmp(wfd.cFileName, _T("..")) != 0)
+		if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			&& (StrCmp(fd.cFileName, _T(".")) != 0) && (StrCmp(fd.cFileName, _T("..")) != 0)
 			) {
-			appPath = new TCHAR[wcslen(PROGRAM_FILE_PATH) + wcslen(wfd.cFileName) + 2];
+			appPath = new TCHAR[wcslen(PROGRAM_FILE_PATH) + wcslen(fd.cFileName) + 2];
 			StrCpy(appPath, PROGRAM_FILE_PATH);
 			StrCat(appPath, L"\\");
-			StrCat(appPath, wfd.cFileName);
-
-			deepPathSearch(appPath, 0);
+			StrCat(appPath, fd.cFileName);
+			OutputDebugString(L"Scan app path x64: ");
+			OutputDebugString(appPath);
+			OutputDebugString(L"\n");
+			DeepPathSearch(appPath, 0);
 		}
-		found = FindNextFileW(hFile, &wfd);
+		isFound = FindNextFileW(hFile, &fd);
 	}
 }
 
-void deepPathSearch(TCHAR* appPath, int level) 
-{
-	//Determine depth search level
+void DeepPathSearch(TCHAR* appPath, int level) {
 	if (level >= 2)
 		return;
 	if (appPath == NULL || wcslen(appPath) == 0) {
 		return;
 	}
-
-	TCHAR* appContent = new TCHAR[wcslen(appPath) + 2];
-	StrCpy(appContent, appPath);
-	StrCat(appContent, L"\\*");
-
-	WIN32_FIND_DATA wfd; // Contains information about the file that is found by Find first file and Find next file
-	HANDLE hFile = FindFirstFileW(appContent, &wfd);
+	TCHAR* appPathContent = new TCHAR[wcslen(appPath) + 2];
+	StrCpy(appPathContent, appPath);
+	StrCat(appPathContent, L"\\*");
+	WIN32_FIND_DATA fd;
+	HANDLE hFile = FindFirstFileW(appPathContent, &fd);
 	BOOL isFound = TRUE;
 	if (hFile == INVALID_HANDLE_VALUE) {
 		isFound = FALSE;
@@ -1081,52 +1083,53 @@ void deepPathSearch(TCHAR* appPath, int level)
 	}
 	while (isFound) {
 		if (level == 1) {
-			if ((wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) //Get only directory and folder
-			{
-				isFound = FindNextFileW(hFile, &wfd);
+			if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+				isFound = FindNextFileW(hFile, &fd);
 				continue;
 			}
 		}
-		if ((StrCmp(wfd.cFileName, _T(".")) != 0) && (StrCmp(wfd.cFileName, _T("..")) != 0)) {
-			if (wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) //Get only directory and folder
-			{
-				//Recursion to dive to next depth level
+		if ((StrCmp(fd.cFileName, _T(".")) != 0) && (StrCmp(fd.cFileName, _T("..")) != 0)) {
+			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+				// is directory -> recur
 				TCHAR* childDirectory;
-				childDirectory = new TCHAR[wcslen(appPath) + wcslen(wfd.cFileName) + 2];
+				childDirectory = new TCHAR[wcslen(appPath) + wcslen(fd.cFileName) + 2];
 				StrCpy(childDirectory, appPath);
 				StrCat(childDirectory, L"\\");
-				StrCat(childDirectory, wfd.cFileName);
-				deepPathSearch(childDirectory, level + 1);
+				StrCat(childDirectory, fd.cFileName);
+				DeepPathSearch(childDirectory, level + 1);
 				OutputDebugString(L"Scan child: ");
 				OutputDebugString(childDirectory);
 				OutputDebugString(L"\n");
 				delete[] childDirectory;
 			}
 			else {
-				if (isExecutableFile(wfd.cFileName)) 
-				{
-					//Gotcha!
+				if (IsExefile(fd.cFileName)) {
 					TCHAR* childFile;
-					childFile = new TCHAR[wcslen(appPath) + wcslen(wfd.cFileName) + 2];
+					childFile = new TCHAR[wcslen(appPath) + wcslen(fd.cFileName) + 2];
 					StrCpy(childFile, appPath);
 					StrCat(childFile, L"\\");
-					StrCat(childFile, wfd.cFileName);
+					StrCat(childFile, fd.cFileName);
 
-					//Save data
 					Program p;
 					p.installLocation = appPath;
 					p.displayIcon = childFile;
-					p.displayName = wfd.cFileName;
+					p.displayName = fd.cFileName;
 					p.displayVersion = L"";
 					gListAppName.push_back(p);
+
+					OutputDebugString(L"\t\t File: ");
+					OutputDebugString(fd.cFileName);
+					OutputDebugString(L"\n");
+					// Save config ini
+					//WritePrivateProfileString(L"app", fd.cFileName, childFile, dataPath);
 				}
 			}
 		}
-		isFound = FindNextFileW(hFile, &wfd);
+		isFound = FindNextFileW(hFile, &fd);
 	}
 }
 
-void SortList(int mode)
+void sortList(int mode)
 {
 	for (int i = 0; i < gListAppName.size(); i++)
 	{
@@ -1154,7 +1157,7 @@ void SortList(int mode)
 	}
 }
 
-void SearchList(wstring keyword)
+void searchList(wstring keyword)
 {
 	gToShowList.clear();
 	for (int i = 0; i < gListAppName.size(); i++)
@@ -1178,7 +1181,7 @@ void SearchList(wstring keyword)
 	*/
 }
 
-tstring QueryValueData(HKEY hKey,
+tstring RegistryQueryValue(HKEY hKey,
 	LPCTSTR szName)
 {
 	tstring value;
@@ -1210,7 +1213,7 @@ tstring QueryValueData(HKEY hKey,
 	return value;
 }
 
-void RegistryEnumeration()
+void RegistryEnum()
 {
 	HKEY hKey;
 	LONG ret = ::RegOpenKeyEx(
@@ -1244,11 +1247,11 @@ void RegistryEnumeration()
 			if (::RegOpenKeyEx(hKey, szSubKeyName, 0, KEY_READ, &hItem) != ERROR_SUCCESS)
 				continue;
 
-			tstring name = QueryValueData(hItem, _T("DisplayName"));
-			tstring publisher = QueryValueData(hItem, _T("Publisher"));
-			tstring version = QueryValueData(hItem, _T("DisplayVersion"));
-			tstring location = QueryValueData(hItem, _T("InstallLocation"));
-			tstring icon = QueryValueData(hItem, _T("DisplayIcon"));
+			tstring name = RegistryQueryValue(hItem, _T("DisplayName"));
+			tstring publisher = RegistryQueryValue(hItem, _T("Publisher"));
+			tstring version = RegistryQueryValue(hItem, _T("DisplayVersion"));
+			tstring location = RegistryQueryValue(hItem, _T("InstallLocation"));
+			tstring icon = RegistryQueryValue(hItem, _T("DisplayIcon"));
 
 			if (!name.empty())
 			{
@@ -1268,31 +1271,3 @@ void RegistryEnumeration()
 	::RegCloseKey(hKey);
 }
 
-void AddNotificationIcon(HWND hWnd)
-{
-	//add icon to notification area 
-	ZeroMemory(&icon, sizeof(NOTIFYICONDATA));
-	icon.cbSize = sizeof(NOTIFYICONDATA);
-	icon.uID = IDI_ICON1;
-	icon.hBalloonIcon = LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ICON1));
-	icon.hIcon = (HICON)LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ICON1));
-	icon.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-	icon.hWnd = hWnd;
-	icon.uCallbackMessage = WM_MYMESSAGE;
-	wcscpy_s(icon.szTip, L"My QuickLaunch");
-	Shell_NotifyIcon(NIM_MODIFY, &icon); //modify name in szTip
-	Shell_NotifyIcon(NIM_ADD, &icon); //Add to notification area
-}
-
-void ScanDatabase()
-{
-	int state = SendMessage(hCheckbox, BM_GETCHECK, 0, 0);
-	if (state == BST_CHECKED)
-	{
-		//Include
-		RegistryEnumeration();
-	}
-	ScanProgramFile();
-	ScanProgramFileX86();
-	InsertFrequencyToDb();
-}
