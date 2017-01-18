@@ -80,7 +80,7 @@ public:
 #define DEFAULT_COLOR	RGB(255,255,255)
 
 #define TOOLBAR_HEIGHT	45
-
+#define MAXTIME    5
 #define PROGRAM_FILE_PATH L"C:\\Program Files"
 #define PROGRAM_FILE_PATH_X86 L"C:\\Program Files (x86)"
 #define FREQUENCY_FILE_PATH L"program_frequency.txt"
@@ -105,13 +105,14 @@ vector<wstring> gFrequentProgramName;
 vector<int> gFrequentProgram;
 NOTIFYICONDATA icon;
 WCHAR keyword[255];
-int remainTime = 300; //Show statistic every 5 mins
+
+int remainTime = MAXTIME; //Show statistic every 5 mins
 bool isHiding = false;
 HHOOK hHook = NULL;
 HINSTANCE hinstLib;
 HWND hToolbarText, static1, static2, static3, static4, static5, static6, static7;
 RECT rcClient;
-
+bool isAutoStatistic = false;
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
@@ -270,9 +271,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					  HFONT hFont;
 					  hFont = CreateFont(16, 0, 0, 0, FW_SEMIBOLD, false, false, false, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
 
-					  //set time tim create dialog
-					  SetTimer(hWnd, IDT_TIME_RUN, 1000, (TIMERPROC)TimeToshowStatitistic);
-
+					 
 					  //start to hook
 					  _doInstallHook(hWnd);
 
@@ -347,9 +346,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 													 SetForegroundWindow(hWnd);
 													 UINT clicked = TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, pt.x, pt.y, 0, hWnd, NULL);
 
+													
 													 if (clicked == VIEW_STATITISTIC){
 														 DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_STATISTIC),
 															 hWnd, ViewStatitisticDialog);
+														 
 													 }
 													 else if (clicked == SCAN)
 													{														 
@@ -408,9 +409,30 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case IDM_STATISTIC:
-			DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_STATISTIC),
-				hWnd, ViewStatitisticDialog);
+			{
+							DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_STATISTIC),
+							hWnd, ViewStatitisticDialog);
+							
+		}
 			break;
+
+		case ID_AUTO_STATISTIC:{
+								   if (!isAutoStatistic){
+									   remainTime = MAXTIME;
+									   CheckMenuItem(GetMenu(hWnd), ID_AUTO_STATISTIC, MF_BYCOMMAND |
+										   MF_CHECKED);
+									   //set time tim create dialog
+									   SetTimer(hWnd, IDT_TIME_RUN, 1000, (TIMERPROC)TimeToshowStatitistic);
+									   isAutoStatistic = true;
+								   }
+								   else
+								   {
+									   CheckMenuItem(GetMenu(hWnd), ID_AUTO_STATISTIC, MF_BYCOMMAND |
+										   MF_UNCHECKED);
+									   KillTimer(hWnd, IDT_TIME_RUN);
+									   isAutoStatistic = false;
+								   }
+		}
 
 		case ID_SCAN:
 			//scan here
@@ -488,6 +510,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					  }
 	}
 		break;
+
+
 	case WM_PAINT:
 		hdc = BeginPaint(hWnd, &ps);
 		// TODO: Add any drawing code here...
@@ -914,7 +938,7 @@ void CALLBACK TimeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dw
 	{
 		DialogBox(NULL, MAKEINTRESOURCE(IDD_STATISTIC),
 			hwnd, ViewStatitisticDialog);
-		remainTime = 60;
+		remainTime = MAXTIME;
 	}
 
 	return;
@@ -944,13 +968,13 @@ LRESULT CALLBACK MyHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 	{
 		if (isHiding)
 		{
-			ShowWindow(g_hWnd, SW_SHOW);
+			ShowWindow(g_hWnd, SW_SHOWDEFAULT);
 			isHiding = false;
 		}
 		else
 		{
 			isHiding = true;
-			ShowWindow(g_hWnd, SW_HIDE);
+			ShowWindow(g_hWnd, SW_MINIMIZE);
 
 		}
 	}
