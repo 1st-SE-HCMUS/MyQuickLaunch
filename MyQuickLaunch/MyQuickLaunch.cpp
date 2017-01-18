@@ -72,7 +72,14 @@ public:
 #define COLOR_D			RGB(244,194,13)
 #define COLOR_E			RGB(60,186,84)
 #define COLOR_F			RGB(141,110,99)
+#define COLOR_G			RGB(255, 128, 0)
+#define COLOR_TOOLBAR	RGB(44, 144, 244)
+#define COLOR_BACKGROUND	RGB(240, 240, 240)
+#define COLOR_WHITE		RGB(255,255,255)
+#define COLOR_BLACK		RGB(0, 0, 0)
 #define DEFAULT_COLOR	RGB(255,255,255)
+
+#define TOOLBAR_HEIGHT	45
 
 #define PROGRAM_FILE_PATH L"C:\\Program Files"
 #define PROGRAM_FILE_PATH_X86 L"C:\\Program Files (x86)"
@@ -91,17 +98,18 @@ HWND hListProgram;
 HWND hCheckbox;
 HWND btn;
 HWND g_hWnd;
+COLORREF colorArray[] = {COLOR_A, COLOR_B, COLOR_C, COLOR_D, COLOR_E, COLOR_F, COLOR_G};
 vector<Program> gListAppName;
 vector<Program> gToShowList;
 vector<wstring> gFrequentProgramName;
 vector<int> gFrequentProgram;
 NOTIFYICONDATA icon;
 WCHAR keyword[255];
-int remain_Time = 60;
-bool isClicked = false;
+int remainTime = 300; //Show statistic every 5 mins
+bool isHiding = false;
 HHOOK hHook = NULL;
 HINSTANCE hinstLib;
-HWND static1, static2, static3, static4, static5, static6, static7;
+HWND hToolbarText, static1, static2, static3, static4, static5, static6, static7;
 RECT rcClient;
 
 
@@ -119,7 +127,7 @@ void CALLBACK TimeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dw
 void LoadDataToListView(vector<Program> list);
 wstring fixExecutablePath(wstring path);
 void deepPathSearch(TCHAR* appPath, int level);
-void setNote(HWND staticX, int i, vector<Program>sort, int sum);
+void setChartAnnotation(HWND staticX, int i, vector<Program>sort, int sum);
 void _doRemoveHook(HWND hWnd);
 void _doInstallHook(HWND hWnd); 
 void ClearData();
@@ -135,6 +143,7 @@ tstring QueryValueData(HKEY hKey, LPCTSTR szValueName);
 void RegistryEnumeration();
 void AddNotificationIcon(HWND hWnd);
 void ScanDatabase();
+void fillRectangle(HDC hdc, int x1, int y1, int x2, int y2, COLORREF color);
 
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
@@ -299,14 +308,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 
-	case WM_KEYDOWN:{
+	case WM_KEYDOWN:
+	{
 
 						_doInstallHook(hWnd);
 
-						if (isClicked){
+						if (isHiding) {
    							//bat su kien hook o day
-							ShowWindow(hWnd, SW_SHOWNORMAL);
-							MessageBox(hWnd, L"OK", NULL, 0);
+// 							ShowWindow(hWnd, SW_SHOWNORMAL);
+// 							MessageBox(hWnd, L"OK", NULL, 0);
 						}
 	}  
 		break;
@@ -338,7 +348,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 													 UINT clicked = TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, pt.x, pt.y, 0, hWnd, NULL);
 
 													 if (clicked == VIEW_STATITISTIC){
-														 DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_DIALOG2),
+														 DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_STATISTIC),
 															 hWnd, ViewStatitisticDialog);
 													 }
 													 else if (clicked == SCAN)
@@ -395,9 +405,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case IDM_EXIT:
 			DestroyWindow(hWnd);
+			break;
 
 		case IDM_STATISTIC:
-			DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_DIALOG2),
+			DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_STATISTIC),
 				hWnd, ViewStatitisticDialog);
 			break;
 
@@ -410,11 +421,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		case IDM_ABOUT:
 			break;
-			/*
-		case IDM_EXIT:
-			DestroyWindow(hWnd);
-			break;
-			*/
+			
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 		}
@@ -485,6 +492,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		hdc = BeginPaint(hWnd, &ps);
 		// TODO: Add any drawing code here...
 		EndPaint(hWnd, &ps);
+		break;
+	case WM_CLOSE:
+		ShowWindow(hWnd, SW_HIDE);
 		break;
 	case WM_DESTROY:
 		WriteProgramFrequency(FREQUENCY_FILE_PATH);
@@ -590,7 +600,7 @@ wstring fixExecutablePath(wstring path)
 	return path.substr(0, index + 3);
 }
 
-void setNote(HWND staticX, int i, vector<Program>sort, int sum){
+void setChartAnnotation(HWND staticX, int i, vector<Program>sort, int sum){
 	ShowWindow(staticX, SW_SHOWNOACTIVATE);
 	wstring temp = to_wstring(100 * (sort[i].frequency) / sum) + L"\%" + L": " + sort[i].displayName;
 	SetWindowText(staticX, temp.c_str());
@@ -601,29 +611,35 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 {
 	HDC hdc;
 	PAINTSTRUCT ps;
+	static HBRUSH dlgTextBackground;
 	GetClientRect(hDlg, &rcClient);
-	int width = rcClient.right - rcClient.left;
-	int height = rcClient.bottom - rcClient.top;
-	HFONT hFont = CreateFont(17, 7, 0, 0, FW_EXTRALIGHT, true, false, false, ANSI_CHARSET,
-		OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-		DEFAULT_PITCH | FF_DONTCARE, TEXT("Segoe UI"));	GetClientRect(hDlg, &rcClient);
+	int dlgWidth = rcClient.right - rcClient.left;
+	int dlgHeight = rcClient.bottom - rcClient.top;
+	HFONT hFont = hFont = CreateFont(28, 0, 0, 0, FW_SEMIBOLD, false, false, false, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+
 	UNREFERENCED_PARAMETER(lParam);
 	switch (message)
 	{
 	case WM_INITDIALOG:
-		static1 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		hToolbarText = CreateWindowEx(0, L"STATIC", L"Statistic", WS_CHILD | WS_VISIBLE, 20, 10, 75, 28, hDlg, NULL, NULL, NULL);
+		SendMessage(hToolbarText, WM_SETFONT, (WPARAM)hFont, true);
+
+		hFont = CreateFont(24, 7, 0, 0, FW_EXTRALIGHT, true, false, false, ANSI_CHARSET,
+			OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+			DEFAULT_PITCH | FF_DONTCARE, TEXT("Segoe UI"));
+		static1 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9 / 15, dlgHeight / 10 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static1, WM_SETFONT, (WPARAM)hFont, true);
-		static2 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9/15, height / 5, 400, 20, hDlg, NULL, NULL, NULL);
+		static2 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9/15, dlgHeight / 5 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static2, WM_SETFONT, (WPARAM)hFont, true);
-		static3 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 3 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		static3 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9 / 15, dlgHeight * 3 / 10 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static3, WM_SETFONT, (WPARAM)hFont, true);
-		static4 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 4 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		static4 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9 / 15, dlgHeight * 4 / 10 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static4, WM_SETFONT, (WPARAM)hFont, true);
-		static5 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height / 2, 400, 20, hDlg, NULL, NULL, NULL);
+		static5 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9 / 15, dlgHeight / 2 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static5, WM_SETFONT, (WPARAM)hFont, true);
-		static6 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 6 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		static6 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9 / 15, dlgHeight * 6 / 10 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static6, WM_SETFONT, (WPARAM)hFont, true);
-		static7 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, width * 9 / 15, height * 7 / 10, 400, 20, hDlg, NULL, NULL, NULL);
+		static7 = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, dlgWidth * 9 / 15, dlgHeight * 7 / 10 + TOOLBAR_HEIGHT, 200, 20, hDlg, NULL, NULL, NULL);
 		SendMessage(static7, WM_SETFONT, (WPARAM)hFont, true);
 
 		//ShowWindow(static1, SW_HIDE);
@@ -633,17 +649,35 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 		ShowWindow(static5, SW_HIDE);
 		ShowWindow(static6, SW_HIDE);
 		ShowWindow(static7, SW_HIDE);
+
+		dlgTextBackground = CreateSolidBrush(COLOR_BACKGROUND);
+
 		break;
 		//return (INT_PTR)true;
 
 	case WM_CTLCOLORSTATIC:
 	{
-							  DWORD CtrlID = GetDlgCtrlID((HWND)lParam); //Window Control ID
 							  HDC hdcStatic = (HDC)wParam;
-							  SetTextColor(hdcStatic, RGB(0, 0, 0));
-							  SetBkMode(hdcStatic, TRANSPARENT);
+							  DWORD CtrlID = GetDlgCtrlID((HWND)lParam); //Window Control ID
 
-	}break;
+							  if ((HWND)lParam == hToolbarText)
+							  {
+								  SetTextColor(hdcStatic, COLOR_WHITE);
+								  SetBkColor(hdcStatic, COLOR_TOOLBAR);
+							  }
+							  else
+							  {
+								  SetTextColor(hdcStatic, COLOR_BLACK);
+								  SetBkColor(hdcStatic, COLOR_WHITE);
+							  }
+
+							  
+							  return (BOOL)GetSysColorBrush(COLOR_WINDOW);
+	}
+		break;
+	case WM_CTLCOLORDLG:
+		return (INT_PTR)dlgTextBackground;
+		break;
 	case WM_COMMAND:
 	{
 					   int id = LOWORD(wParam);
@@ -660,15 +694,23 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 						   return (INT_PTR)true;
 						   break;
 					   }
-	}break;
+	}
+		break;
 
 
 	case WM_PAINT:
 	{
-					 if (gListAppName.size() > 0){
-						 hdc = BeginPaint(hDlg, &ps);
-						 int nX = width/4;
-						 int nY = height/3;
+					 hdc = BeginPaint(hDlg, &ps);
+
+					 //Draw elevation
+					 fillRectangle(hdc, 30, 0, dlgWidth - 20, dlgHeight - 20, COLOR_WHITE);
+
+					 fillRectangle(hdc, 0, 0, dlgWidth, TOOLBAR_HEIGHT, COLOR_TOOLBAR);
+
+					 if (gListAppName.size() > 0)
+					 {
+						 int nX = dlgWidth/4;
+						 int nY = dlgHeight/3 + TOOLBAR_HEIGHT;
 						 DWORD dwRadius = 100;
 						 float xStartAngle = 90;
 						 float xSweepAngle = 0;
@@ -704,8 +746,11 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 						 //bat dau ve					
 						 SelectObject(hdc, GetStockObject(DC_BRUSH));
 
-						 for (int i = 0; i < sortedList.size(); i++){
-							 if (i < 6 && sortedList[i].frequency>0){
+						 //Ve bieu do tron
+						 for (int i = 0; i < sortedList.size(); i++) 
+						 {
+							 if (i < 6 && sortedList[i].frequency>0)
+							 {
 								 //tinh goc quay
 								 xSweepAngle = 360 * sortedList[i].frequency / sum;
 								 BeginPath(hdc);
@@ -714,48 +759,48 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 									 if (i == sortedList.size() - 1){
 										 xSweepAngle = 270 + xStartAngle;
 									 }
-									 SetDCBrushColor(hdc, COLOR_A);
-									 setNote(static1, i, sortedList, sum);
+									 SetDCBrushColor(hdc, colorArray[i]);
+									 setChartAnnotation(static1, i, sortedList, sum);
 								 }
 								 if (i == 1)
 								 {
 									 if (i == sortedList.size() - 1){
 										 xSweepAngle = 270 + xStartAngle;
 									 }
-									 SetDCBrushColor(hdc, COLOR_B);
-									 setNote(static2, i, sortedList, sum);
+									 SetDCBrushColor(hdc, colorArray[i]);
+									 setChartAnnotation(static2, i, sortedList, sum);
 								 }
 								 if (i == 2)
 								 {
 									 if (i == sortedList.size() - 1){
 										 xSweepAngle = 270 + xStartAngle;
 									 }
-									 SetDCBrushColor(hdc, COLOR_C);
-									 setNote(static3, i, sortedList, sum);
+									 SetDCBrushColor(hdc, colorArray[i]);
+									 setChartAnnotation(static3, i, sortedList, sum);
 								 }
 								 if (i == 3)
 								 {
 									 if (i == sortedList.size() - 1){
 										 xSweepAngle = 270 + xStartAngle;
 									 }
-									 SetDCBrushColor(hdc, COLOR_D);
-									 setNote(static4, i, sortedList, sum);
+									 SetDCBrushColor(hdc, colorArray[i]);
+									 setChartAnnotation(static4, i, sortedList, sum);
 								 }
 								 if (i == 4)
 								 {
 									 if (i == sortedList.size() - 1){
 										 xSweepAngle = 270 + xStartAngle;
 									 }
-									 SetDCBrushColor(hdc, COLOR_E);
-									 setNote(static5, i, sortedList, sum);
+									 SetDCBrushColor(hdc, colorArray[i]);
+									 setChartAnnotation(static5, i, sortedList, sum);
 								 }
 								 if (i == 5)
 								 {
 									 if (i == sortedList.size() - 1){
 										 xSweepAngle = 270 + xStartAngle;
 									 }
-									 SetDCBrushColor(hdc, COLOR_F);
-									 setNote(static6, i, sortedList, sum);
+									 SetDCBrushColor(hdc, colorArray[i]);
+									 setChartAnnotation(static6, i, sortedList, sum);
 								 }
 							 }
 							 else
@@ -767,11 +812,11 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 								 xSweepAngle = 270 + xStartAngle;
 
 								 BeginPath(hdc);
-								 SetDCBrushColor(hdc, RGB(255, 128, 0));
+								 SetDCBrushColor(hdc, colorArray[6]);
 								 Draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
 
 								 //hien chu tich
-								 Rectangle(hdc, width  / 2, height * (i + 1) / 10, width * 4/ 7, height * (i + 1) / 10 + height / 20);
+								 Rectangle(hdc, dlgWidth  / 2, dlgHeight * (i + 1) / 10, dlgWidth * 4/ 7, dlgHeight * (i + 1) / 10 + dlgHeight / 20);
 								 ShowWindow(static7, SW_SHOWNOACTIVATE);
 								 wstring temp = to_wstring((int)(100 * xSweepAngle / 360)) + L"\%" + L"Khác: ";
 								 SetWindowText(static7, temp.c_str());
@@ -780,7 +825,7 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 							 }
 
 							 Draw(hDlg, hdc, nX, nY, dwRadius, xStartAngle, -xSweepAngle);
-							 Rectangle(hdc, width /2, height * (i + 1) / 10, width *4 / 7, height * (i + 1) / 10 + height / 20);
+							 fillRectangle(hdc, dlgWidth / 2, dlgHeight * (i + 1) / 10 + TOOLBAR_HEIGHT, dlgWidth * 4 / 7, dlgHeight * (i + 1) / 10 + dlgHeight / 20 + TOOLBAR_HEIGHT, colorArray[i]);
 
 							 //dich chuyen duong noi tam voi bien theo chieu goc quay
 							 xStartAngle -= xSweepAngle;
@@ -836,10 +881,11 @@ INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wPara
 	{
 							  DWORD CtrlID = GetDlgCtrlID((HWND)lParam); //Window Control ID
 							  HDC hdcStatic = (HDC)wParam;
-							  SetTextColor(hdcStatic, RGB(0, 0, 0));
-							  SetBkMode(hdcStatic, TRANSPARENT);
-
-	}break;
+							  SetTextColor(hdcStatic, COLOR_BLACK);
+							  SetBkColor(hdcStatic, COLOR_WHITE);
+							  return (BOOL)GetSysColorBrush(COLOR_WINDOW);
+	}
+		break;
 	case WM_COMMAND:
 	{
 					   int id = LOWORD(wParam);
@@ -863,12 +909,12 @@ INT_PTR CALLBACK ScanToBuildDatabaseDialog(HWND hDlg, UINT message, WPARAM wPara
 
 void CALLBACK TimeToshowStatitistic(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime)
 {
-	remain_Time--;
-	if (remain_Time == -1)
+	remainTime--;
+	if (remainTime == -1)
 	{
-		DialogBox(NULL, MAKEINTRESOURCE(IDD_DIALOG2),
+		DialogBox(NULL, MAKEINTRESOURCE(IDD_STATISTIC),
 			hwnd, ViewStatitisticDialog);
-		remain_Time = 60;
+		remainTime = 60;
 	}
 
 	return;
@@ -896,14 +942,14 @@ LRESULT CALLBACK MyHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 
 	if ((GetAsyncKeyState(VK_LWIN)<0) && (GetAsyncKeyState('K') <0))
 	{
-		if (!isClicked)
+		if (isHiding)
 		{
 			ShowWindow(g_hWnd, SW_SHOW);
-			isClicked = true;
+			isHiding = false;
 		}
 		else
 		{
-			isClicked = false;
+			isHiding = true;
 			ShowWindow(g_hWnd, SW_HIDE);
 
 		}
@@ -1075,9 +1121,6 @@ void deepPathSearch(TCHAR* appPath, int level)
 	BOOL isFound = TRUE;
 	if (hFile == INVALID_HANDLE_VALUE) {
 		isFound = FALSE;
-		OutputDebugString(L"Can't found when scan app: ");
-		OutputDebugString(appPath);
-		OutputDebugString(L"\n");
 	}
 	while (isFound) {
 		if (level == 1) {
@@ -1097,9 +1140,8 @@ void deepPathSearch(TCHAR* appPath, int level)
 				StrCat(childDirectory, L"\\");
 				StrCat(childDirectory, wfd.cFileName);
 				deepPathSearch(childDirectory, level + 1);
-				OutputDebugString(L"Scan child: ");
-				OutputDebugString(childDirectory);
-				OutputDebugString(L"\n");
+
+				//Make GC happy
 				delete[] childDirectory;
 			}
 			else {
@@ -1295,4 +1337,20 @@ void ScanDatabase()
 	ScanProgramFile();
 	ScanProgramFileX86();
 	InsertFrequencyToDb();
+}
+
+void fillRectangle(HDC hdc, int x1, int y1, int x2, int y2, COLORREF color)
+{
+	//Create rectangle
+	RECT* rect = new RECT;
+	rect->left = x1;
+	rect->top = y1;
+	rect->right = x2;
+	rect->bottom = y2;
+
+	//Create new brush
+	HBRUSH hbrush = CreateSolidBrush(color);
+
+	//Fill
+	FillRect(hdc, rect, hbrush);
 }
