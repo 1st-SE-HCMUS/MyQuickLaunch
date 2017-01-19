@@ -57,7 +57,7 @@ bool isAutoStatistic = false;
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
-bool				InitInstance(HINSTANCE, int);
+BOOL				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK ScanProgramDialog(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
@@ -142,7 +142,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //        In this function, we save the instance handle in a global variable and
 //        create and display the main program window.
 //
-bool InitInstance(HINSTANCE hInstance, int nCmdShow)
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    HWND hWnd;
 
@@ -420,7 +420,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							  }
 
 
-							  return (bool)GetSysColorBrush(COLOR_WINDOW);
+							  return (BOOL)GetSysColorBrush(COLOR_WINDOW);
 	}
 		break;
 	case WM_CLOSE:
@@ -606,7 +606,7 @@ INT_PTR CALLBACK ViewStatitisticDialog(HWND hDlg, UINT message, WPARAM wParam, L
 							  }
 
 
-							  return (bool)GetSysColorBrush(COLOR_WINDOW);
+							  return (BOOL)GetSysColorBrush(COLOR_WINDOW);
 	}
 		break;
 	case WM_CTLCOLORDLG:
@@ -837,7 +837,7 @@ INT_PTR CALLBACK ScanProgramDialog(HWND hDlg, UINT message, WPARAM wParam, LPARA
 							  HDC hdcStatic = (HDC)wParam;
 							  SetTextColor(hdcStatic, COLOR_BLACK);
 							  SetBkColor(hdcStatic, COLOR_WHITE);
-							  return (bool)GetSysColorBrush(COLOR_WINDOW);
+							  return (BOOL)GetSysColorBrush(COLOR_WINDOW);
 	}
 		break;
 	case WM_COMMAND:

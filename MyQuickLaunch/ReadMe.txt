@@ -1,62 +1,53 @@
-========================================================================
-    WIN32 APPLICATION : MyQuickLaunch Project Overview
-========================================================================
+My QuickLaunch
 
-AppWizard has created this MyQuickLaunch application for you.
+* Personal information:
+- ID: 1412477
+- Full name: Doan Hieu Tam
+- Email: nhoxbypass@gmail.com
+- Telephone: 0168 493 4109
 
-This file contains a summary of what you will find in each of the files that
-make up your MyQuickLaunch application.
+* Time spent: 8 hours spent in total
+* Video youtube demo link: https://youtu.be/bvhJvPKjDhs
+
+* App Usage: This is an app help user launches applications quickly, contain below functions:
+- Add an Icon to notification are, User right click on it to see menu: Scan to build database, View statitistics, Exit. 
+	+ Exit: exit the app.
+	+ Scan to build database: to scan all exe files in Program Files folder and buid a dictionary.
+	+ View statitistics: to display a chart based on usage frequency of apps. It's Circle chart.
+- User can press the shortcut key (Windows + k) window will be show. 
+- Everytime user  types a key, a list of available apps will appear.
+- App is suggested based on priority of recent use.
+- After a while of using our app, user can see the statistics chart based on his usage frequency.
+- Save data before quit app and Load when open app.
+- User press enter and the selected app will start.
+- User can select using arrow keys from the list.
+
+*Additional flows:
+- User can click on menu on toolbar to exit, draw chart or Scan installed programs.
 
 
-MyQuickLaunch.vcxproj
-    This is the main project file for VC++ projects generated using an Application Wizard.
-    It contains information about the version of Visual C++ that generated the file, and
-    information about the platforms, configurations, and project features selected with the
-    Application Wizard.
 
-MyQuickLaunch.vcxproj.filters
-    This is the filters file for VC++ projects generated using an Application Wizard. 
-    It contains information about the association between the files in your project 
-    and the filters. This association is used in the IDE to show grouping of files with
-    similar extensions under a specific node (for e.g. ".cpp" files are associated with the
-    "Source Files" filter).
 
-MyQuickLaunch.cpp
-    This is the main application source file.
 
-/////////////////////////////////////////////////////////////////////////////
-AppWizard has created the following resources:
 
-MyQuickLaunch.rc
-    This is a listing of all of the Microsoft Windows resources that the
-    program uses.  It includes the icons, bitmaps, and cursors that are stored
-    in the RES subdirectory.  This file can be directly edited in Microsoft
-    Visual C++.
 
-Resource.h
-    This is the standard header file, which defines new resource IDs.
-    Microsoft Visual C++ reads and updates this file.
 
-MyQuickLaunch.ico
-    This is an icon file, which is used as the application's icon (32x32).
-    This icon is included by the main resource file MyQuickLaunch.rc.
 
-small.ico
-    This is an icon file, which contains a smaller version (16x16)
-    of the application's icon. This icon is included by the main resource
-    file MyQuickLaunch.rc.
 
-/////////////////////////////////////////////////////////////////////////////
-Other standard files:
 
-StdAfx.h, StdAfx.cpp
-    These files are used to build a precompiled header (PCH) file
-    named MyQuickLaunch.pch and a precompiled types file named StdAfx.obj.
 
-/////////////////////////////////////////////////////////////////////////////
-Other notes:
 
-AppWizard uses "TODO:" comments to indicate parts of the source code you
-should add to or customize.
 
-/////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+* Don't even have time to finish final project. Poor me....
+ 
+ 

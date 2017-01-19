@@ -1,12 +1,12 @@
-CCleaner.exe
+7z.exe
 1
-wordpad.exe
+CCleaner.exe
 1
 FoxitConnectedPDFService.exe
 1
 FoxitReader.exe
 1
-7z.exe
+wordpad.exe
 1
 wordpad.exe
 1
